@@ -92,8 +92,22 @@
                 
                 <div class="charts-section">
                     <div class="chart-container">
+                        <div class="chart-title">VIX</div>
+                        <div class="chart-root" id="chart_VIX"></div>
+                    </div>
+                </div>
+                
+                <div class="charts-section">
+                    <div class="chart-container">
                         <div class="chart-title">QQQ</div>
                         <div class="chart-root" id="chart_QQQ"></div>
+                    </div>
+                </div>
+                
+                <div class="charts-section">
+                    <div class="chart-container">
+                        <div class="chart-title">IXIC</div>
+                        <div class="chart-root" id="chart_IXIC"></div>
                     </div>
                 </div>
                 
@@ -128,7 +142,7 @@
         </div>
 
         <div class="footer">
-            Generated on 2025-11-20 11:18 UTC
+            Generated on 2025-11-20 11:40 UTC
         </div>
     </div>
 
@@ -183,18 +197,27 @@
             getPriceRange(prices) {
                 const allPrices = [];
                 prices.forEach(p => {
-                    allPrices.push(p.high, p.low, p.open, p.close);
-                    if (p.ema_8) allPrices.push(p.ema_8);
-                    if (p.ema_21) allPrices.push(p.ema_21);
-                    if (p.sma_50) allPrices.push(p.sma_50);
-                    if (p.bb_upper) allPrices.push(p.bb_upper);
-                    if (p.bb_lower) allPrices.push(p.bb_lower);
+                    // Skip null data points
+                    if (p.high !== null && p.low !== null && p.open !== null && p.close !== null) {
+                        allPrices.push(p.high, p.low, p.open, p.close);
+                        if (p.ema_8) allPrices.push(p.ema_8);
+                        if (p.ema_21) allPrices.push(p.ema_21);
+                        if (p.sma_50) allPrices.push(p.sma_50);
+                        if (p.bb_upper) allPrices.push(p.bb_upper);
+                        if (p.bb_lower) allPrices.push(p.bb_lower);
+                    }
                 });
+                if (allPrices.length === 0) {
+                    return { min: 0, max: 100 };  // Default range for empty charts
+                }
                 return { min: Math.min(...allPrices), max: Math.max(...allPrices) };
             }
 
             getVolumeRange(prices) {
-                const volumes = prices.map(p => p.volume);
+                const volumes = prices.filter(p => p.volume !== null).map(p => p.volume);
+                if (volumes.length === 0) {
+                    return { min: 0, max: 1000000 };  // Default range for empty charts
+                }
                 return { min: Math.min(...volumes), max: Math.max(...volumes) };
             }
 
@@ -291,7 +314,11 @@
 
             drawBollingerBands(group) {
                 const prices = this.data.data;
-                if (!prices || prices.length === 0 || !prices[0].bb_upper) return;
+                if (!prices || prices.length === 0) return;
+
+                // Check if any point has BB data
+                const hasBBData = prices.some(p => p.bb_upper !== undefined && p.bb_upper !== null);
+                if (!hasBBData) return;
 
                 const pathData = {
                     upper: [],
@@ -299,12 +326,15 @@
                     lower: []
                 };
 
+                let firstPoint = true;
                 prices.forEach((p, i) => {
-                    if (p.bb_upper) {
+                    if (p.bb_upper !== undefined && p.bb_upper !== null && p.open !== null) {
                         const x = this.xScale(i);
-                        pathData.upper.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_upper)}`);
-                        pathData.middle.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_middle)}`);
-                        pathData.lower.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_lower)}`);
+                        const cmd = firstPoint ? 'M' : 'L';
+                        pathData.upper.push(`${cmd} ${x},${this.yScale(p.bb_upper)}`);
+                        pathData.middle.push(`${cmd} ${x},${this.yScale(p.bb_middle)}`);
+                        pathData.lower.push(`${cmd} ${x},${this.yScale(p.bb_lower)}`);
+                        firstPoint = false;
                     }
                 });
 
@@ -334,7 +364,7 @@
                 mas.forEach(ma => {
                     const pathData = [];
                     prices.forEach((p, i) => {
-                        if (p[ma.key]) {
+                        if (p[ma.key] !== undefined && p[ma.key] !== null && p.open !== null) {
                             const x = this.xScale(i);
                             const y = this.yScale(p[ma.key]);
                             pathData.push(`${pathData.length === 0 ? 'M' : 'L'} ${x},${y}`);
@@ -358,6 +388,12 @@
 
                 prices.forEach((p, i) => {
                     const x = this.xScale(i);
+
+                    // Skip null data points
+                    if (p.open === null || p.high === null || p.low === null || p.close === null) {
+                        return;
+                    }
+
                     const isUp = p.close >= p.open;
                     const color = isUp ? COLORS.upCandle : COLORS.downCandle;
 
@@ -412,6 +448,11 @@
             drawVolume(group) {
                 const volumeBase = this.chartHeight * 0.75;
                 this.data.data.forEach((candle, i) => {
+                    // Skip null data points
+                    if (candle.volume === null || candle.volume === undefined) {
+                        return;
+                    }
+
                     const x = this.xScale(i);
                     const barWidth = Math.max(1, this.chartWidth / this.data.data.length * 0.8);
                     const barHeight = this.volumeScale(candle.volume);
@@ -464,18 +505,40 @@
             }
 
             drawLegend(group) {
-                // Legend items with colors and labels
+                // Build legend items dynamically based on what's actually in the data
                 const legendItems = [
-                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle },
-                    { label: '8 EMA', color: COLORS.ema8 },
-                    { label: '21 EMA', color: COLORS.ema21 },
-                    { label: '50 SMA', color: COLORS.sma50 },
-                    { label: 'BB Upper', color: COLORS.bbUpper },
-                    { label: 'BB Middle', color: COLORS.bbMiddle },
-                    { label: 'BB Lower', color: COLORS.bbLower },
-                    { label: 'V1 Scorecard', color: COLORS.v1_scorecard },
-                    { label: 'V2 Scorecard', color: COLORS.v2_scorecard }
+                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle }
                 ];
+
+                // Check if technical indicators are present in the data
+                const prices = this.data.data;
+                if (prices && prices.length > 0) {
+                    const samplePoint = prices[0];
+
+                    // Only add indicators that exist in the data
+                    if (samplePoint.ema_8 !== undefined) {
+                        legendItems.push({ label: '8 EMA', color: COLORS.ema8 });
+                    }
+                    if (samplePoint.ema_21 !== undefined) {
+                        legendItems.push({ label: '21 EMA', color: COLORS.ema21 });
+                    }
+                    if (samplePoint.sma_50 !== undefined) {
+                        legendItems.push({ label: '50 SMA', color: COLORS.sma50 });
+                    }
+                    if (samplePoint.bb_upper !== undefined) {
+                        legendItems.push({ label: 'BB Upper', color: COLORS.bbUpper });
+                        legendItems.push({ label: 'BB Middle', color: COLORS.bbMiddle });
+                        legendItems.push({ label: 'BB Lower', color: COLORS.bbLower });
+                    }
+                }
+
+                // Always add scorecard overlays if present
+                if (this.scorecardData && this.scorecardData.v1) {
+                    legendItems.push({ label: 'V1 Scorecard', color: COLORS.v1_scorecard });
+                }
+                if (this.scorecardData && this.scorecardData.v2) {
+                    legendItems.push({ label: 'V2 Scorecard', color: COLORS.v2_scorecard });
+                }
 
                 const legendX = 10;
                 const legendY = 10;
@@ -583,18 +646,40 @@
             }
 
             drawLegend(group) {
-                // Build base legend items
+                // Build legend items dynamically based on what's actually in the data
                 const legendItems = [
-                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle },
-                    { label: '8 EMA', color: COLORS.ema8 },
-                    { label: '21 EMA', color: COLORS.ema21 },
-                    { label: '50 SMA', color: COLORS.sma50 },
-                    { label: 'BB Upper', color: COLORS.bbUpper },
-                    { label: 'BB Middle', color: COLORS.bbMiddle },
-                    { label: 'BB Lower', color: COLORS.bbLower },
-                    { label: 'V1 Scorecard', color: COLORS.v1_scorecard },
-                    { label: 'V2 Scorecard', color: COLORS.v2_scorecard }
+                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle }
                 ];
+
+                // Check if technical indicators are present in the data
+                const prices = this.data.data;
+                if (prices && prices.length > 0) {
+                    const samplePoint = prices[0];
+
+                    // Only add indicators that exist in the data
+                    if (samplePoint.ema_8 !== undefined) {
+                        legendItems.push({ label: '8 EMA', color: COLORS.ema8 });
+                    }
+                    if (samplePoint.ema_21 !== undefined) {
+                        legendItems.push({ label: '21 EMA', color: COLORS.ema21 });
+                    }
+                    if (samplePoint.sma_50 !== undefined) {
+                        legendItems.push({ label: '50 SMA', color: COLORS.sma50 });
+                    }
+                    if (samplePoint.bb_upper !== undefined) {
+                        legendItems.push({ label: 'BB Upper', color: COLORS.bbUpper });
+                        legendItems.push({ label: 'BB Middle', color: COLORS.bbMiddle });
+                        legendItems.push({ label: 'BB Lower', color: COLORS.bbLower });
+                    }
+                }
+
+                // Add scorecard overlays if present
+                if (this.scorecardData && this.scorecardData.v1) {
+                    legendItems.push({ label: 'V1 Scorecard', color: COLORS.v1_scorecard });
+                }
+                if (this.scorecardData && this.scorecardData.v2) {
+                    legendItems.push({ label: 'V2 Scorecard', color: COLORS.v2_scorecard });
+                }
 
                 // Add stochastic indicators if present
                 if (this.stochasticData) {
@@ -678,6 +763,19 @@
                 
                 <script>
                 (function() {
+                    const chartData = [{"date": "2024-07-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-11", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-25", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-31", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-21", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-28", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-04", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-11", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-25", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-30", "open": null, "high": null, "low": null, "close": null, "volume": null}];
+                    const scorecardData = {"v1": {"2024-07-01": 5, "2024-07-02": 5, "2024-07-03": 5, "2024-07-05": 6, "2024-07-08": 5, "2024-07-09": 5, "2024-07-10": 6, "2024-07-11": 6, "2024-07-12": 6, "2024-07-15": 6, "2024-07-16": 6, "2024-07-17": 6, "2024-07-18": 6, "2024-07-19": 3, "2024-07-22": 5, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 4, "2024-07-26": 5, "2024-07-29": 5, "2024-07-30": 4, "2024-07-31": 5, "2024-08-01": 5, "2024-08-02": 4, "2024-08-05": 1, "2024-08-06": 1, "2024-08-07": 1, "2024-08-08": 1, "2024-08-09": 3, "2024-08-12": 3, "2024-08-13": 1, "2024-08-14": 2, "2024-08-15": 3, "2024-08-16": 5, "2024-08-19": 5, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 6, "2024-08-28": 6, "2024-08-29": 6, "2024-08-30": 6, "2024-09-03": 5, "2024-09-04": 5, "2024-09-05": 5, "2024-09-06": 2, "2024-09-09": 1, "2024-09-10": 2, "2024-09-11": 3, "2024-09-12": 4, "2024-09-13": 5, "2024-09-16": 6, "2024-09-17": 6, "2024-09-18": 6, "2024-09-19": 6, "2024-09-20": 6, "2024-09-23": 6, "2024-09-24": 6, "2024-09-25": 6, "2024-09-26": 6, "2024-09-27": 6, "2024-09-30": 6}, "v2": {"2024-07-01": 4, "2024-07-02": 5, "2024-07-03": 7, "2024-07-05": 6, "2024-07-08": 7, "2024-07-09": 6, "2024-07-10": 7, "2024-07-11": 7, "2024-07-12": 6, "2024-07-15": 5, "2024-07-16": 5, "2024-07-17": 4, "2024-07-18": 4, "2024-07-19": 4, "2024-07-22": 4, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 5, "2024-07-26": 4, "2024-07-29": 4, "2024-07-30": 4, "2024-07-31": 4, "2024-08-01": 4, "2024-08-02": 2, "2024-08-05": 2, "2024-08-06": 1, "2024-08-07": 0, "2024-08-08": 1, "2024-08-09": 2, "2024-08-12": 3, "2024-08-13": 4, "2024-08-14": 4, "2024-08-15": 6, "2024-08-16": 6, "2024-08-19": 6, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 5, "2024-08-28": 4, "2024-08-29": 4, "2024-08-30": 4, "2024-09-03": 3, "2024-09-04": 3, "2024-09-05": 4, "2024-09-06": 2, "2024-09-09": 2, "2024-09-10": 2, "2024-09-11": 6, "2024-09-12": 7, "2024-09-13": 7, "2024-09-16": 7, "2024-09-17": 7, "2024-09-18": 7, "2024-09-19": 7, "2024-09-20": 7, "2024-09-23": 7, "2024-09-24": 7, "2024-09-25": 7, "2024-09-26": 7, "2024-09-27": 7, "2024-09-30": 6}};
+                    const stochasticData = {"stoch_10_4": ["2024-07-22", "2024-07-23", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-06", "2024-09-05", "2024-09-06", "2024-09-09", "2024-09-10"], "stoch_10_1": ["2024-07-17", "2024-07-18", "2024-07-19", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-01", "2024-08-02", "2024-08-05", "2024-08-28", "2024-08-29", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-09"]};
+
+                    // Prepare data in format expected by CompareChart
+                    const data = { data: chartData };
+
+                    new CompareChart('chart_VIX', data, scorecardData, stochasticData);
+                })();
+                </script>
+                
+                <script>
+                (function() {
                     const chartData = [{"date": "2024-07-01", "open": 480.04, "high": 482.49, "low": 476.25, "close": 481.92, "volume": 24898336}, {"date": "2024-07-02", "open": 480.41, "high": 487.04, "low": 480.28, "close": 486.98, "volume": 26723559}, {"date": "2024-07-03", "open": 486.22, "high": 491.17, "low": 486.22, "close": 491.04, "volume": 18064880}, {"date": "2024-07-05", "open": 491.89, "high": 496.6, "low": 491.59, "close": 496.16, "volume": 28495936}, {"date": "2024-07-08", "open": 496.53, "high": 497.89, "low": 495.5, "close": 497.34, "volume": 22109420}, {"date": "2024-07-09", "open": 498.87, "high": 500.0, "low": 496.24, "close": 497.77, "volume": 25701253}, {"date": "2024-07-10", "open": 499.71, "high": 503.52, "low": 498.39, "close": 502.96, "volume": 28046901}, {"date": "2024-07-11", "open": 503.07, "high": 503.28, "low": 490.73, "close": 491.93, "volume": 49966590}, {"date": "2024-07-12", "open": 492.51, "high": 499.62, "low": 492.04, "close": 494.82, "volume": 37109399}, {"date": "2024-07-15", "open": 496.61, "high": 501.01, "low": 494.09, "close": 496.15, "volume": 31151386}, {"date": "2024-07-16", "open": 497.62, "high": 498.44, "low": 493.15, "close": 496.34, "volume": 25950622}, {"date": "2024-07-17", "open": 488.28, "high": 488.8, "low": 481.7, "close": 481.77, "volume": 56268768}, {"date": "2024-07-18", "open": 485.53, "high": 485.71, "low": 476.27, "close": 479.49, "volume": 49347361}, {"date": "2024-07-19", "open": 479.15, "high": 481.69, "low": 473.94, "close": 475.24, "volume": 42042856}, {"date": "2024-07-22", "open": 481.16, "high": 483.35, "low": 477.71, "close": 482.32, "volume": 40299999}, {"date": "2024-07-23", "open": 481.41, "high": 484.43, "low": 480.14, "close": 480.62, "volume": 23282454}, {"date": "2024-07-24", "open": 473.82, "high": 474.19, "low": 462.51, "close": 463.38, "volume": 58818629}, {"date": "2024-07-25", "open": 463.72, "high": 467.94, "low": 455.63, "close": 458.27, "volume": 59256759}, {"date": "2024-07-26", "open": 462.65, "high": 465.93, "low": 459.77, "close": 462.97, "volume": 39992132}, {"date": "2024-07-29", "open": 465.71, "high": 467.91, "low": 461.62, "close": 463.9, "volume": 28218476}, {"date": "2024-07-30", "open": 465.85, "high": 466.56, "low": 454.15, "close": 457.53, "volume": 41317210}, {"date": "2024-07-31", "open": 467.87, "high": 472.79, "low": 466.41, "close": 471.07, "volume": 44552134}, {"date": "2024-08-01", "open": 471.76, "high": 475.55, "low": 455.98, "close": 459.66, "volume": 56653900}, {"date": "2024-08-02", "open": 450.89, "high": 453.57, "low": 444.47, "close": 448.75, "volume": 66323244}, {"date": "2024-08-05", "open": 424.71, "high": 442.29, "low": 423.45, "close": 435.37, "volume": 87483452}, {"date": "2024-08-06", "open": 437.23, "high": 447.07, "low": 434.56, "close": 439.53, "volume": 63164429}, {"date": "2024-08-07", "open": 446.49, "high": 449.0, "low": 434.37, "close": 434.77, "volume": 54929163}, {"date": "2024-08-08", "open": 441.06, "high": 448.99, "low": 437.15, "close": 448.07, "volume": 47890071}, {"date": "2024-08-09", "open": 446.74, "high": 452.06, "low": 445.61, "close": 450.41, "volume": 33573976}, {"date": "2024-08-12", "open": 451.39, "high": 454.37, "low": 448.55, "close": 451.38, "volume": 27795006}, {"date": "2024-08-13", "open": 455.82, "high": 462.85, "low": 455.68, "close": 462.58, "volume": 40084457}, {"date": "2024-08-14", "open": 463.51, "high": 465.11, "low": 458.4, "close": 462.73, "volume": 34733746}, {"date": "2024-08-15", "open": 468.76, "high": 474.82, "low": 468.38, "close": 474.42, "volume": 38280565}, {"date": "2024-08-16", "open": 472.62, "high": 476.41, "low": 471.65, "close": 475.03, "volume": 38383623}, {"date": "2024-08-19", "open": 475.17, "high": 481.31, "low": 473.37, "close": 481.27, "volume": 23737674}, {"date": "2024-08-20", "open": 480.35, "high": 482.94, "low": 478.55, "close": 480.26, "volume": 29209340}, {"date": "2024-08-21", "open": 481.05, "high": 484.37, "low": 479.32, "close": 482.5, "volume": 25658787}, {"date": "2024-08-22", "open": 484.84, "high": 485.54, "low": 473.81, "close": 474.85, "volume": 37739576}, {"date": "2024-08-23", "open": 479.24, "high": 482.74, "low": 475.28, "close": 480.0, "volume": 36061508}, {"date": "2024-08-26", "open": 479.45, "high": 480.38, "low": 473.24, "close": 475.34, "volume": 27452641}, {"date": "2024-08-27", "open": 473.69, "high": 477.84, "low": 471.71, "close": 476.76, "volume": 27510003}, {"date": "2024-08-28", "open": 476.29, "high": 477.02, "low": 467.89, "close": 471.35, "volume": 37372436}, {"date": "2024-08-29", "open": 473.28, "high": 477.93, "low": 469.37, "close": 470.66, "volume": 41081465}, {"date": "2024-08-30", "open": 475.04, "high": 476.9, "low": 470.51, "close": 476.27, "volume": 33466473}, {"date": "2024-09-03", "open": 473.2, "high": 473.33, "low": 459.41, "close": 461.81, "volume": 44985219}, {"date": "2024-09-04", "open": 458.67, "high": 464.45, "low": 457.73, "close": 460.61, "volume": 32505102}, {"date": "2024-09-05", "open": 458.97, "high": 465.36, "low": 457.94, "close": 461.04, "volume": 34452385}, {"date": "2024-09-06", "open": 460.33, "high": 461.22, "low": 448.19, "close": 448.69, "volume": 50624385}, {"date": "2024-09-09", "open": 453.06, "high": 455.46, "low": 449.82, "close": 454.46, "volume": 32981169}, {"date": "2024-09-10", "open": 456.24, "high": 459.17, "low": 452.23, "close": 458.66, "volume": 29680319}, {"date": "2024-09-11", "open": 459.91, "high": 469.37, "low": 451.28, "close": 468.62, "volume": 57842992}, {"date": "2024-09-12", "open": 468.65, "high": 474.04, "low": 466.85, "close": 473.22, "volume": 40175456}, {"date": "2024-09-13", "open": 472.48, "high": 476.53, "low": 472.25, "close": 475.34, "volume": 29111849}, {"date": "2024-09-16", "open": 473.19, "high": 473.86, "low": 469.89, "close": 473.24, "volume": 22585596}, {"date": "2024-09-17", "open": 476.29, "high": 477.6, "low": 470.97, "close": 473.49, "volume": 30084438}, {"date": "2024-09-18", "open": 474.7, "high": 478.83, "low": 470.83, "close": 471.44, "volume": 39909215}, {"date": "2024-09-19", "open": 482.61, "high": 486.23, "low": 480.49, "close": 483.36, "volume": 52782523}, {"date": "2024-09-20", "open": 482.49, "high": 483.69, "low": 478.3, "close": 482.44, "volume": 34577663}, {"date": "2024-09-23", "open": 482.95, "high": 484.14, "low": 481.6, "close": 483.04, "volume": 24842972}, {"date": "2024-09-24", "open": 484.46, "high": 486.33, "low": 480.17, "close": 485.37, "volume": 25952637}, {"date": "2024-09-25", "open": 484.74, "high": 487.79, "low": 484.56, "close": 485.82, "volume": 26549866}, {"date": "2024-09-26", "open": 493.37, "high": 493.7, "low": 485.8, "close": 489.47, "volume": 32020206}, {"date": "2024-09-27", "open": 490.5, "high": 490.64, "low": 485.56, "close": 486.75, "volume": 22851120}, {"date": "2024-09-30", "open": 485.78, "high": 488.41, "low": 482.92, "close": 488.07, "volume": 30330605}];
                     const scorecardData = {"v1": {"2024-07-01": 5, "2024-07-02": 5, "2024-07-03": 5, "2024-07-05": 6, "2024-07-08": 5, "2024-07-09": 5, "2024-07-10": 6, "2024-07-11": 6, "2024-07-12": 6, "2024-07-15": 6, "2024-07-16": 6, "2024-07-17": 6, "2024-07-18": 6, "2024-07-19": 3, "2024-07-22": 5, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 4, "2024-07-26": 5, "2024-07-29": 5, "2024-07-30": 4, "2024-07-31": 5, "2024-08-01": 5, "2024-08-02": 4, "2024-08-05": 1, "2024-08-06": 1, "2024-08-07": 1, "2024-08-08": 1, "2024-08-09": 3, "2024-08-12": 3, "2024-08-13": 1, "2024-08-14": 2, "2024-08-15": 3, "2024-08-16": 5, "2024-08-19": 5, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 6, "2024-08-28": 6, "2024-08-29": 6, "2024-08-30": 6, "2024-09-03": 5, "2024-09-04": 5, "2024-09-05": 5, "2024-09-06": 2, "2024-09-09": 1, "2024-09-10": 2, "2024-09-11": 3, "2024-09-12": 4, "2024-09-13": 5, "2024-09-16": 6, "2024-09-17": 6, "2024-09-18": 6, "2024-09-19": 6, "2024-09-20": 6, "2024-09-23": 6, "2024-09-24": 6, "2024-09-25": 6, "2024-09-26": 6, "2024-09-27": 6, "2024-09-30": 6}, "v2": {"2024-07-01": 4, "2024-07-02": 5, "2024-07-03": 7, "2024-07-05": 6, "2024-07-08": 7, "2024-07-09": 6, "2024-07-10": 7, "2024-07-11": 7, "2024-07-12": 6, "2024-07-15": 5, "2024-07-16": 5, "2024-07-17": 4, "2024-07-18": 4, "2024-07-19": 4, "2024-07-22": 4, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 5, "2024-07-26": 4, "2024-07-29": 4, "2024-07-30": 4, "2024-07-31": 4, "2024-08-01": 4, "2024-08-02": 2, "2024-08-05": 2, "2024-08-06": 1, "2024-08-07": 0, "2024-08-08": 1, "2024-08-09": 2, "2024-08-12": 3, "2024-08-13": 4, "2024-08-14": 4, "2024-08-15": 6, "2024-08-16": 6, "2024-08-19": 6, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 5, "2024-08-28": 4, "2024-08-29": 4, "2024-08-30": 4, "2024-09-03": 3, "2024-09-04": 3, "2024-09-05": 4, "2024-09-06": 2, "2024-09-09": 2, "2024-09-10": 2, "2024-09-11": 6, "2024-09-12": 7, "2024-09-13": 7, "2024-09-16": 7, "2024-09-17": 7, "2024-09-18": 7, "2024-09-19": 7, "2024-09-20": 7, "2024-09-23": 7, "2024-09-24": 7, "2024-09-25": 7, "2024-09-26": 7, "2024-09-27": 7, "2024-09-30": 6}};
                     const stochasticData = {"stoch_10_4": ["2024-07-22", "2024-07-23", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-06", "2024-09-05", "2024-09-06", "2024-09-09", "2024-09-10"], "stoch_10_1": ["2024-07-17", "2024-07-18", "2024-07-19", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-01", "2024-08-02", "2024-08-05", "2024-08-28", "2024-08-29", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-09"]};
@@ -686,6 +784,19 @@
                     const data = { data: chartData };
 
                     new CompareChart('chart_QQQ', data, scorecardData, stochasticData);
+                })();
+                </script>
+                
+                <script>
+                (function() {
+                    const chartData = [{"date": "2024-07-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-11", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-25", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-31", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-21", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-28", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-08-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-04", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-11", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-25", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-26", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-09-30", "open": null, "high": null, "low": null, "close": null, "volume": null}];
+                    const scorecardData = {"v1": {"2024-07-01": 5, "2024-07-02": 5, "2024-07-03": 5, "2024-07-05": 6, "2024-07-08": 5, "2024-07-09": 5, "2024-07-10": 6, "2024-07-11": 6, "2024-07-12": 6, "2024-07-15": 6, "2024-07-16": 6, "2024-07-17": 6, "2024-07-18": 6, "2024-07-19": 3, "2024-07-22": 5, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 4, "2024-07-26": 5, "2024-07-29": 5, "2024-07-30": 4, "2024-07-31": 5, "2024-08-01": 5, "2024-08-02": 4, "2024-08-05": 1, "2024-08-06": 1, "2024-08-07": 1, "2024-08-08": 1, "2024-08-09": 3, "2024-08-12": 3, "2024-08-13": 1, "2024-08-14": 2, "2024-08-15": 3, "2024-08-16": 5, "2024-08-19": 5, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 6, "2024-08-28": 6, "2024-08-29": 6, "2024-08-30": 6, "2024-09-03": 5, "2024-09-04": 5, "2024-09-05": 5, "2024-09-06": 2, "2024-09-09": 1, "2024-09-10": 2, "2024-09-11": 3, "2024-09-12": 4, "2024-09-13": 5, "2024-09-16": 6, "2024-09-17": 6, "2024-09-18": 6, "2024-09-19": 6, "2024-09-20": 6, "2024-09-23": 6, "2024-09-24": 6, "2024-09-25": 6, "2024-09-26": 6, "2024-09-27": 6, "2024-09-30": 6}, "v2": {"2024-07-01": 4, "2024-07-02": 5, "2024-07-03": 7, "2024-07-05": 6, "2024-07-08": 7, "2024-07-09": 6, "2024-07-10": 7, "2024-07-11": 7, "2024-07-12": 6, "2024-07-15": 5, "2024-07-16": 5, "2024-07-17": 4, "2024-07-18": 4, "2024-07-19": 4, "2024-07-22": 4, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 5, "2024-07-26": 4, "2024-07-29": 4, "2024-07-30": 4, "2024-07-31": 4, "2024-08-01": 4, "2024-08-02": 2, "2024-08-05": 2, "2024-08-06": 1, "2024-08-07": 0, "2024-08-08": 1, "2024-08-09": 2, "2024-08-12": 3, "2024-08-13": 4, "2024-08-14": 4, "2024-08-15": 6, "2024-08-16": 6, "2024-08-19": 6, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 5, "2024-08-28": 4, "2024-08-29": 4, "2024-08-30": 4, "2024-09-03": 3, "2024-09-04": 3, "2024-09-05": 4, "2024-09-06": 2, "2024-09-09": 2, "2024-09-10": 2, "2024-09-11": 6, "2024-09-12": 7, "2024-09-13": 7, "2024-09-16": 7, "2024-09-17": 7, "2024-09-18": 7, "2024-09-19": 7, "2024-09-20": 7, "2024-09-23": 7, "2024-09-24": 7, "2024-09-25": 7, "2024-09-26": 7, "2024-09-27": 7, "2024-09-30": 6}};
+                    const stochasticData = {"stoch_10_4": ["2024-07-22", "2024-07-23", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-06", "2024-09-05", "2024-09-06", "2024-09-09", "2024-09-10"], "stoch_10_1": ["2024-07-17", "2024-07-18", "2024-07-19", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-01", "2024-08-02", "2024-08-05", "2024-08-28", "2024-08-29", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-09"]};
+
+                    // Prepare data in format expected by CompareChart
+                    const data = { data: chartData };
+
+                    new CompareChart('chart_IXIC', data, scorecardData, stochasticData);
                 })();
                 </script>
                 
@@ -730,7 +841,7 @@
                 
                 <script>
                 (function() {
-                    const chartData = [{"date": "2024-07-23", "open": 26.59, "high": 26.61, "low": 25.75, "close": 26.24, "volume": 9858048}, {"date": "2024-07-24", "open": 26.31, "high": 26.33, "low": 25.47, "close": 25.5, "volume": 10092833}, {"date": "2024-07-25", "open": 23.95, "high": 24.09, "low": 23.51, "close": 23.7, "volume": 9141648}, {"date": "2024-07-26", "open": 24.62, "high": 24.94, "low": 24.42, "close": 24.87, "volume": 8300467}, {"date": "2024-07-29", "open": 25.57, "high": 25.57, "low": 24.71, "close": 25.12, "volume": 6590520}, {"date": "2024-07-30", "open": 25.4, "high": 25.49, "low": 24.73, "close": 24.82, "volume": 4890986}, {"date": "2024-07-31", "open": 25.28, "high": 25.42, "low": 24.62, "close": 24.79, "volume": 5588816}, {"date": "2024-08-01", "open": 24.13, "high": 24.25, "low": 23.36, "close": 23.75, "volume": 4079691}, {"date": "2024-08-02", "open": 23.89, "high": 24.15, "low": 22.66, "close": 22.84, "volume": 5555109}, {"date": "2024-08-05", "open": 16.61, "high": 19.13, "low": 16.58, "close": 18.25, "volume": 11492207}, {"date": "2024-08-06", "open": 18.66, "high": 19.39, "low": 18.38, "close": 18.92, "volume": 5592645}, {"date": "2024-08-07", "open": 18.74, "high": 18.88, "low": 17.66, "close": 17.84, "volume": 6881863}, {"date": "2024-08-08", "open": 18.72, "high": 19.78, "low": 18.31, "close": 19.55, "volume": 7559083}, {"date": "2024-08-09", "open": 19.89, "high": 20.22, "low": 19.39, "close": 19.67, "volume": 1746417}, {"date": "2024-08-12", "open": 20.35, "high": 20.65, "low": 19.68, "close": 20.19, "volume": 2615534}, {"date": "2024-08-13", "open": 20.05, "high": 20.72, "low": 19.97, "close": 20.58, "volume": 1715377}, {"date": "2024-08-14", "open": 20.66, "high": 20.7, "low": 19.98, "close": 20.25, "volume": 1660358}, {"date": "2024-08-15", "open": 20.16, "high": 20.29, "low": 19.13, "close": 19.35, "volume": 2870539}, {"date": "2024-08-16", "open": 19.8, "high": 19.95, "low": 19.36, "close": 19.89, "volume": 2462292}, {"date": "2024-08-19", "open": 19.7, "high": 19.95, "low": 19.46, "close": 19.79, "volume": 1057241}, {"date": "2024-08-20", "open": 20.05, "high": 20.13, "low": 19.38, "close": 19.73, "volume": 1650118}, {"date": "2024-08-21", "open": 19.53, "high": 20.1, "low": 19.24, "close": 20.08, "volume": 2131492}, {"date": "2024-08-22", "open": 19.91, "high": 19.94, "low": 19.65, "close": 19.76, "volume": 955422}, {"date": "2024-08-23", "open": 20.17, "high": 20.88, "low": 19.98, "close": 20.86, "volume": 3211776}, {"date": "2024-08-26", "open": 20.75, "high": 20.77, "low": 20.29, "close": 20.33, "volume": 2216129}, {"date": "2024-08-27", "open": 19.88, "high": 19.9, "low": 19.4, "close": 19.6, "volume": 2201252}, {"date": "2024-08-28", "open": 19.13, "high": 19.32, "low": 18.62, "close": 19.0, "volume": 2559390}, {"date": "2024-08-29", "open": 19.49, "high": 19.69, "low": 19.03, "close": 19.16, "volume": 1209096}, {"date": "2024-08-30", "open": 19.17, "high": 19.27, "low": 18.44, "close": 19.01, "volume": 2439037}, {"date": "2024-09-03", "open": 19.01, "high": 19.01, "low": 18.45, "close": 18.54, "volume": 2004817}, {"date": "2024-09-04", "open": 18.15, "high": 18.87, "low": 18.13, "close": 18.6, "volume": 1811415}, {"date": "2024-09-05", "open": 18.17, "high": 18.3, "low": 17.81, "close": 17.92, "volume": 1477093}, {"date": "2024-09-06", "open": 18.17, "high": 18.19, "low": 16.73, "close": 16.83, "volume": 2677852}, {"date": "2024-09-09", "open": 17.51, "high": 17.85, "low": 17.24, "close": 17.84, "volume": 1321550}, {"date": "2024-09-10", "open": 17.78, "high": 18.12, "low": 17.61, "close": 18.06, "volume": 1099255}, {"date": "2024-09-11", "open": 17.68, "high": 17.96, "low": 17.27, "close": 17.75, "volume": 1609503}, {"date": "2024-09-12", "open": 17.78, "high": 17.94, "low": 17.56, "close": 17.91, "volume": 1005185}, {"date": "2024-09-13", "open": 17.8, "high": 18.44, "low": 17.79, "close": 18.39, "volume": 1256665}, {"date": "2024-09-16", "open": 17.46, "high": 17.5, "low": 17.2, "close": 17.23, "volume": 1358465}, {"date": "2024-09-17", "open": 17.63, "high": 18.15, "low": 17.46, "close": 17.84, "volume": 1879897}, {"date": "2024-09-18", "open": 17.53, "high": 17.93, "low": 17.35, "close": 17.54, "volume": 1916425}, {"date": "2024-09-19", "open": 18.56, "high": 18.92, "low": 18.36, "close": 18.67, "volume": 4302839}, {"date": "2024-09-20", "open": 19.23, "high": 19.49, "low": 19.09, "close": 19.29, "volume": 1745029}, {"date": "2024-09-23", "open": 20.06, "high": 20.5, "low": 19.97, "close": 20.28, "volume": 1893019}, {"date": "2024-09-24", "open": 19.97, "high": 20.14, "low": 19.65, "close": 20.1, "volume": 1926578}, {"date": "2024-09-25", "open": 19.84, "high": 19.94, "low": 19.44, "close": 19.49, "volume": 1379588}, {"date": "2024-09-26", "open": 19.91, "high": 20.23, "low": 19.78, "close": 20.11, "volume": 2304099}, {"date": "2024-09-27", "open": 20.14, "high": 20.7, "low": 20.05, "close": 20.49, "volume": 3803498}, {"date": "2024-09-30", "open": 19.95, "high": 19.96, "low": 19.52, "close": 19.67, "volume": 2351814}];
+                    const chartData = [{"date": "2024-07-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-11", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2024-07-23", "open": 26.59, "high": 26.61, "low": 25.75, "close": 26.24, "volume": 9858048}, {"date": "2024-07-24", "open": 26.31, "high": 26.33, "low": 25.47, "close": 25.5, "volume": 10092833}, {"date": "2024-07-25", "open": 23.95, "high": 24.09, "low": 23.51, "close": 23.7, "volume": 9141648}, {"date": "2024-07-26", "open": 24.62, "high": 24.94, "low": 24.42, "close": 24.87, "volume": 8300467}, {"date": "2024-07-29", "open": 25.57, "high": 25.57, "low": 24.71, "close": 25.12, "volume": 6590520}, {"date": "2024-07-30", "open": 25.4, "high": 25.49, "low": 24.73, "close": 24.82, "volume": 4890986}, {"date": "2024-07-31", "open": 25.28, "high": 25.42, "low": 24.62, "close": 24.79, "volume": 5588816}, {"date": "2024-08-01", "open": 24.13, "high": 24.25, "low": 23.36, "close": 23.75, "volume": 4079691}, {"date": "2024-08-02", "open": 23.89, "high": 24.15, "low": 22.66, "close": 22.84, "volume": 5555109}, {"date": "2024-08-05", "open": 16.61, "high": 19.13, "low": 16.58, "close": 18.25, "volume": 11492207}, {"date": "2024-08-06", "open": 18.66, "high": 19.39, "low": 18.38, "close": 18.92, "volume": 5592645}, {"date": "2024-08-07", "open": 18.74, "high": 18.88, "low": 17.66, "close": 17.84, "volume": 6881863}, {"date": "2024-08-08", "open": 18.72, "high": 19.78, "low": 18.31, "close": 19.55, "volume": 7559083}, {"date": "2024-08-09", "open": 19.89, "high": 20.22, "low": 19.39, "close": 19.67, "volume": 1746417}, {"date": "2024-08-12", "open": 20.35, "high": 20.65, "low": 19.68, "close": 20.19, "volume": 2615534}, {"date": "2024-08-13", "open": 20.05, "high": 20.72, "low": 19.97, "close": 20.58, "volume": 1715377}, {"date": "2024-08-14", "open": 20.66, "high": 20.7, "low": 19.98, "close": 20.25, "volume": 1660358}, {"date": "2024-08-15", "open": 20.16, "high": 20.29, "low": 19.13, "close": 19.35, "volume": 2870539}, {"date": "2024-08-16", "open": 19.8, "high": 19.95, "low": 19.36, "close": 19.89, "volume": 2462292}, {"date": "2024-08-19", "open": 19.7, "high": 19.95, "low": 19.46, "close": 19.79, "volume": 1057241}, {"date": "2024-08-20", "open": 20.05, "high": 20.13, "low": 19.38, "close": 19.73, "volume": 1650118}, {"date": "2024-08-21", "open": 19.53, "high": 20.1, "low": 19.24, "close": 20.08, "volume": 2131492}, {"date": "2024-08-22", "open": 19.91, "high": 19.94, "low": 19.65, "close": 19.76, "volume": 955422}, {"date": "2024-08-23", "open": 20.17, "high": 20.88, "low": 19.98, "close": 20.86, "volume": 3211776}, {"date": "2024-08-26", "open": 20.75, "high": 20.77, "low": 20.29, "close": 20.33, "volume": 2216129}, {"date": "2024-08-27", "open": 19.88, "high": 19.9, "low": 19.4, "close": 19.6, "volume": 2201252}, {"date": "2024-08-28", "open": 19.13, "high": 19.32, "low": 18.62, "close": 19.0, "volume": 2559390}, {"date": "2024-08-29", "open": 19.49, "high": 19.69, "low": 19.03, "close": 19.16, "volume": 1209096}, {"date": "2024-08-30", "open": 19.17, "high": 19.27, "low": 18.44, "close": 19.01, "volume": 2439037}, {"date": "2024-09-03", "open": 19.01, "high": 19.01, "low": 18.45, "close": 18.54, "volume": 2004817}, {"date": "2024-09-04", "open": 18.15, "high": 18.87, "low": 18.13, "close": 18.6, "volume": 1811415}, {"date": "2024-09-05", "open": 18.17, "high": 18.3, "low": 17.81, "close": 17.92, "volume": 1477093}, {"date": "2024-09-06", "open": 18.17, "high": 18.19, "low": 16.73, "close": 16.83, "volume": 2677852}, {"date": "2024-09-09", "open": 17.51, "high": 17.85, "low": 17.24, "close": 17.84, "volume": 1321550}, {"date": "2024-09-10", "open": 17.78, "high": 18.12, "low": 17.61, "close": 18.06, "volume": 1099255}, {"date": "2024-09-11", "open": 17.68, "high": 17.96, "low": 17.27, "close": 17.75, "volume": 1609503}, {"date": "2024-09-12", "open": 17.78, "high": 17.94, "low": 17.56, "close": 17.91, "volume": 1005185}, {"date": "2024-09-13", "open": 17.8, "high": 18.44, "low": 17.79, "close": 18.39, "volume": 1256665}, {"date": "2024-09-16", "open": 17.46, "high": 17.5, "low": 17.2, "close": 17.23, "volume": 1358465}, {"date": "2024-09-17", "open": 17.63, "high": 18.15, "low": 17.46, "close": 17.84, "volume": 1879897}, {"date": "2024-09-18", "open": 17.53, "high": 17.93, "low": 17.35, "close": 17.54, "volume": 1916425}, {"date": "2024-09-19", "open": 18.56, "high": 18.92, "low": 18.36, "close": 18.67, "volume": 4302839}, {"date": "2024-09-20", "open": 19.23, "high": 19.49, "low": 19.09, "close": 19.29, "volume": 1745029}, {"date": "2024-09-23", "open": 20.06, "high": 20.5, "low": 19.97, "close": 20.28, "volume": 1893019}, {"date": "2024-09-24", "open": 19.97, "high": 20.14, "low": 19.65, "close": 20.1, "volume": 1926578}, {"date": "2024-09-25", "open": 19.84, "high": 19.94, "low": 19.44, "close": 19.49, "volume": 1379588}, {"date": "2024-09-26", "open": 19.91, "high": 20.23, "low": 19.78, "close": 20.11, "volume": 2304099}, {"date": "2024-09-27", "open": 20.14, "high": 20.7, "low": 20.05, "close": 20.49, "volume": 3803498}, {"date": "2024-09-30", "open": 19.95, "high": 19.96, "low": 19.52, "close": 19.67, "volume": 2351814}];
                     const scorecardData = {"v1": {"2024-07-01": 5, "2024-07-02": 5, "2024-07-03": 5, "2024-07-05": 6, "2024-07-08": 5, "2024-07-09": 5, "2024-07-10": 6, "2024-07-11": 6, "2024-07-12": 6, "2024-07-15": 6, "2024-07-16": 6, "2024-07-17": 6, "2024-07-18": 6, "2024-07-19": 3, "2024-07-22": 5, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 4, "2024-07-26": 5, "2024-07-29": 5, "2024-07-30": 4, "2024-07-31": 5, "2024-08-01": 5, "2024-08-02": 4, "2024-08-05": 1, "2024-08-06": 1, "2024-08-07": 1, "2024-08-08": 1, "2024-08-09": 3, "2024-08-12": 3, "2024-08-13": 1, "2024-08-14": 2, "2024-08-15": 3, "2024-08-16": 5, "2024-08-19": 5, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 6, "2024-08-28": 6, "2024-08-29": 6, "2024-08-30": 6, "2024-09-03": 5, "2024-09-04": 5, "2024-09-05": 5, "2024-09-06": 2, "2024-09-09": 1, "2024-09-10": 2, "2024-09-11": 3, "2024-09-12": 4, "2024-09-13": 5, "2024-09-16": 6, "2024-09-17": 6, "2024-09-18": 6, "2024-09-19": 6, "2024-09-20": 6, "2024-09-23": 6, "2024-09-24": 6, "2024-09-25": 6, "2024-09-26": 6, "2024-09-27": 6, "2024-09-30": 6}, "v2": {"2024-07-01": 4, "2024-07-02": 5, "2024-07-03": 7, "2024-07-05": 6, "2024-07-08": 7, "2024-07-09": 6, "2024-07-10": 7, "2024-07-11": 7, "2024-07-12": 6, "2024-07-15": 5, "2024-07-16": 5, "2024-07-17": 4, "2024-07-18": 4, "2024-07-19": 4, "2024-07-22": 4, "2024-07-23": 5, "2024-07-24": 4, "2024-07-25": 5, "2024-07-26": 4, "2024-07-29": 4, "2024-07-30": 4, "2024-07-31": 4, "2024-08-01": 4, "2024-08-02": 2, "2024-08-05": 2, "2024-08-06": 1, "2024-08-07": 0, "2024-08-08": 1, "2024-08-09": 2, "2024-08-12": 3, "2024-08-13": 4, "2024-08-14": 4, "2024-08-15": 6, "2024-08-16": 6, "2024-08-19": 6, "2024-08-20": 6, "2024-08-21": 6, "2024-08-22": 6, "2024-08-23": 6, "2024-08-26": 6, "2024-08-27": 5, "2024-08-28": 4, "2024-08-29": 4, "2024-08-30": 4, "2024-09-03": 3, "2024-09-04": 3, "2024-09-05": 4, "2024-09-06": 2, "2024-09-09": 2, "2024-09-10": 2, "2024-09-11": 6, "2024-09-12": 7, "2024-09-13": 7, "2024-09-16": 7, "2024-09-17": 7, "2024-09-18": 7, "2024-09-19": 7, "2024-09-20": 7, "2024-09-23": 7, "2024-09-24": 7, "2024-09-25": 7, "2024-09-26": 7, "2024-09-27": 7, "2024-09-30": 6}};
                     const stochasticData = {"stoch_10_4": ["2024-07-22", "2024-07-23", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-06", "2024-09-05", "2024-09-06", "2024-09-09", "2024-09-10"], "stoch_10_1": ["2024-07-17", "2024-07-18", "2024-07-19", "2024-07-24", "2024-07-25", "2024-07-26", "2024-07-29", "2024-07-30", "2024-08-01", "2024-08-02", "2024-08-05", "2024-08-28", "2024-08-29", "2024-09-03", "2024-09-04", "2024-09-05", "2024-09-06", "2024-09-09"]};
 

@@ -92,8 +92,22 @@
                 
                 <div class="charts-section">
                     <div class="chart-container">
+                        <div class="chart-title">VIX</div>
+                        <div class="chart-root" id="chart_VIX"></div>
+                    </div>
+                </div>
+                
+                <div class="charts-section">
+                    <div class="chart-container">
                         <div class="chart-title">QQQ</div>
                         <div class="chart-root" id="chart_QQQ"></div>
+                    </div>
+                </div>
+                
+                <div class="charts-section">
+                    <div class="chart-container">
+                        <div class="chart-title">IXIC</div>
+                        <div class="chart-root" id="chart_IXIC"></div>
                     </div>
                 </div>
                 
@@ -128,7 +142,7 @@
         </div>
 
         <div class="footer">
-            Generated on 2025-11-20 11:18 UTC
+            Generated on 2025-11-20 11:40 UTC
         </div>
     </div>
 
@@ -183,18 +197,27 @@
             getPriceRange(prices) {
                 const allPrices = [];
                 prices.forEach(p => {
-                    allPrices.push(p.high, p.low, p.open, p.close);
-                    if (p.ema_8) allPrices.push(p.ema_8);
-                    if (p.ema_21) allPrices.push(p.ema_21);
-                    if (p.sma_50) allPrices.push(p.sma_50);
-                    if (p.bb_upper) allPrices.push(p.bb_upper);
-                    if (p.bb_lower) allPrices.push(p.bb_lower);
+                    // Skip null data points
+                    if (p.high !== null && p.low !== null && p.open !== null && p.close !== null) {
+                        allPrices.push(p.high, p.low, p.open, p.close);
+                        if (p.ema_8) allPrices.push(p.ema_8);
+                        if (p.ema_21) allPrices.push(p.ema_21);
+                        if (p.sma_50) allPrices.push(p.sma_50);
+                        if (p.bb_upper) allPrices.push(p.bb_upper);
+                        if (p.bb_lower) allPrices.push(p.bb_lower);
+                    }
                 });
+                if (allPrices.length === 0) {
+                    return { min: 0, max: 100 };  // Default range for empty charts
+                }
                 return { min: Math.min(...allPrices), max: Math.max(...allPrices) };
             }
 
             getVolumeRange(prices) {
-                const volumes = prices.map(p => p.volume);
+                const volumes = prices.filter(p => p.volume !== null).map(p => p.volume);
+                if (volumes.length === 0) {
+                    return { min: 0, max: 1000000 };  // Default range for empty charts
+                }
                 return { min: Math.min(...volumes), max: Math.max(...volumes) };
             }
 
@@ -291,7 +314,11 @@
 
             drawBollingerBands(group) {
                 const prices = this.data.data;
-                if (!prices || prices.length === 0 || !prices[0].bb_upper) return;
+                if (!prices || prices.length === 0) return;
+
+                // Check if any point has BB data
+                const hasBBData = prices.some(p => p.bb_upper !== undefined && p.bb_upper !== null);
+                if (!hasBBData) return;
 
                 const pathData = {
                     upper: [],
@@ -299,12 +326,15 @@
                     lower: []
                 };
 
+                let firstPoint = true;
                 prices.forEach((p, i) => {
-                    if (p.bb_upper) {
+                    if (p.bb_upper !== undefined && p.bb_upper !== null && p.open !== null) {
                         const x = this.xScale(i);
-                        pathData.upper.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_upper)}`);
-                        pathData.middle.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_middle)}`);
-                        pathData.lower.push(`${i === 0 ? 'M' : 'L'} ${x},${this.yScale(p.bb_lower)}`);
+                        const cmd = firstPoint ? 'M' : 'L';
+                        pathData.upper.push(`${cmd} ${x},${this.yScale(p.bb_upper)}`);
+                        pathData.middle.push(`${cmd} ${x},${this.yScale(p.bb_middle)}`);
+                        pathData.lower.push(`${cmd} ${x},${this.yScale(p.bb_lower)}`);
+                        firstPoint = false;
                     }
                 });
 
@@ -334,7 +364,7 @@
                 mas.forEach(ma => {
                     const pathData = [];
                     prices.forEach((p, i) => {
-                        if (p[ma.key]) {
+                        if (p[ma.key] !== undefined && p[ma.key] !== null && p.open !== null) {
                             const x = this.xScale(i);
                             const y = this.yScale(p[ma.key]);
                             pathData.push(`${pathData.length === 0 ? 'M' : 'L'} ${x},${y}`);
@@ -358,6 +388,12 @@
 
                 prices.forEach((p, i) => {
                     const x = this.xScale(i);
+
+                    // Skip null data points
+                    if (p.open === null || p.high === null || p.low === null || p.close === null) {
+                        return;
+                    }
+
                     const isUp = p.close >= p.open;
                     const color = isUp ? COLORS.upCandle : COLORS.downCandle;
 
@@ -412,6 +448,11 @@
             drawVolume(group) {
                 const volumeBase = this.chartHeight * 0.75;
                 this.data.data.forEach((candle, i) => {
+                    // Skip null data points
+                    if (candle.volume === null || candle.volume === undefined) {
+                        return;
+                    }
+
                     const x = this.xScale(i);
                     const barWidth = Math.max(1, this.chartWidth / this.data.data.length * 0.8);
                     const barHeight = this.volumeScale(candle.volume);
@@ -464,18 +505,40 @@
             }
 
             drawLegend(group) {
-                // Legend items with colors and labels
+                // Build legend items dynamically based on what's actually in the data
                 const legendItems = [
-                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle },
-                    { label: '8 EMA', color: COLORS.ema8 },
-                    { label: '21 EMA', color: COLORS.ema21 },
-                    { label: '50 SMA', color: COLORS.sma50 },
-                    { label: 'BB Upper', color: COLORS.bbUpper },
-                    { label: 'BB Middle', color: COLORS.bbMiddle },
-                    { label: 'BB Lower', color: COLORS.bbLower },
-                    { label: 'V1 Scorecard', color: COLORS.v1_scorecard },
-                    { label: 'V2 Scorecard', color: COLORS.v2_scorecard }
+                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle }
                 ];
+
+                // Check if technical indicators are present in the data
+                const prices = this.data.data;
+                if (prices && prices.length > 0) {
+                    const samplePoint = prices[0];
+
+                    // Only add indicators that exist in the data
+                    if (samplePoint.ema_8 !== undefined) {
+                        legendItems.push({ label: '8 EMA', color: COLORS.ema8 });
+                    }
+                    if (samplePoint.ema_21 !== undefined) {
+                        legendItems.push({ label: '21 EMA', color: COLORS.ema21 });
+                    }
+                    if (samplePoint.sma_50 !== undefined) {
+                        legendItems.push({ label: '50 SMA', color: COLORS.sma50 });
+                    }
+                    if (samplePoint.bb_upper !== undefined) {
+                        legendItems.push({ label: 'BB Upper', color: COLORS.bbUpper });
+                        legendItems.push({ label: 'BB Middle', color: COLORS.bbMiddle });
+                        legendItems.push({ label: 'BB Lower', color: COLORS.bbLower });
+                    }
+                }
+
+                // Always add scorecard overlays if present
+                if (this.scorecardData && this.scorecardData.v1) {
+                    legendItems.push({ label: 'V1 Scorecard', color: COLORS.v1_scorecard });
+                }
+                if (this.scorecardData && this.scorecardData.v2) {
+                    legendItems.push({ label: 'V2 Scorecard', color: COLORS.v2_scorecard });
+                }
 
                 const legendX = 10;
                 const legendY = 10;
@@ -583,18 +646,40 @@
             }
 
             drawLegend(group) {
-                // Build base legend items
+                // Build legend items dynamically based on what's actually in the data
                 const legendItems = [
-                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle },
-                    { label: '8 EMA', color: COLORS.ema8 },
-                    { label: '21 EMA', color: COLORS.ema21 },
-                    { label: '50 SMA', color: COLORS.sma50 },
-                    { label: 'BB Upper', color: COLORS.bbUpper },
-                    { label: 'BB Middle', color: COLORS.bbMiddle },
-                    { label: 'BB Lower', color: COLORS.bbLower },
-                    { label: 'V1 Scorecard', color: COLORS.v1_scorecard },
-                    { label: 'V2 Scorecard', color: COLORS.v2_scorecard }
+                    { label: 'Candlesticks: Green=Up, Red=Down', color: COLORS.upCandle }
                 ];
+
+                // Check if technical indicators are present in the data
+                const prices = this.data.data;
+                if (prices && prices.length > 0) {
+                    const samplePoint = prices[0];
+
+                    // Only add indicators that exist in the data
+                    if (samplePoint.ema_8 !== undefined) {
+                        legendItems.push({ label: '8 EMA', color: COLORS.ema8 });
+                    }
+                    if (samplePoint.ema_21 !== undefined) {
+                        legendItems.push({ label: '21 EMA', color: COLORS.ema21 });
+                    }
+                    if (samplePoint.sma_50 !== undefined) {
+                        legendItems.push({ label: '50 SMA', color: COLORS.sma50 });
+                    }
+                    if (samplePoint.bb_upper !== undefined) {
+                        legendItems.push({ label: 'BB Upper', color: COLORS.bbUpper });
+                        legendItems.push({ label: 'BB Middle', color: COLORS.bbMiddle });
+                        legendItems.push({ label: 'BB Lower', color: COLORS.bbLower });
+                    }
+                }
+
+                // Add scorecard overlays if present
+                if (this.scorecardData && this.scorecardData.v1) {
+                    legendItems.push({ label: 'V1 Scorecard', color: COLORS.v1_scorecard });
+                }
+                if (this.scorecardData && this.scorecardData.v2) {
+                    legendItems.push({ label: 'V2 Scorecard', color: COLORS.v2_scorecard });
+                }
 
                 // Add stochastic indicators if present
                 if (this.stochasticData) {
@@ -678,6 +763,19 @@
                 
                 <script>
                 (function() {
+                    const chartData = [{"date": "2025-10-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-21", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-28", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-31", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-04", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-20", "open": null, "high": null, "low": null, "close": null, "volume": null}];
+                    const scorecardData = {"v1": {"2025-10-01": 6, "2025-10-02": 6, "2025-10-03": 6, "2025-10-06": 6, "2025-10-07": 6, "2025-10-08": 6, "2025-10-09": 6, "2025-10-10": 5, "2025-10-14": 6, "2025-10-15": 6, "2025-10-16": 6, "2025-10-17": 4, "2025-10-20": 6, "2025-10-21": 5, "2025-10-22": 4, "2025-10-23": 5, "2025-10-24": 6, "2025-10-27": 6, "2025-10-28": 5, "2025-10-29": 5, "2025-10-30": 5, "2025-10-31": 5, "2025-11-03": 5, "2025-11-04": 3, "2025-11-05": 4, "2025-11-06": 4, "2025-11-07": 3, "2025-11-10": 4, "2025-11-12": 4, "2025-11-13": 4, "2025-11-14": 3, "2025-11-17": 3, "2025-11-18": 3, "2025-11-19": 3, "2025-11-20": 4}, "v2": {"2025-10-01": 7, "2025-10-02": 7, "2025-10-03": 7, "2025-10-06": 7, "2025-10-07": 7, "2025-10-08": 7, "2025-10-09": 7, "2025-10-10": 4, "2025-10-14": 4, "2025-10-15": 4, "2025-10-16": 4, "2025-10-17": 5, "2025-10-20": 7, "2025-10-21": 7, "2025-10-22": 6, "2025-10-23": 6, "2025-10-24": 7, "2025-10-27": 7, "2025-10-28": 7, "2025-10-29": 7, "2025-10-30": 6, "2025-10-31": 6, "2025-11-03": 6, "2025-11-04": 4, "2025-11-05": 4, "2025-11-06": 3, "2025-11-07": 2, "2025-11-10": 4, "2025-11-12": 6, "2025-11-13": 3, "2025-11-14": 2, "2025-11-17": 1, "2025-11-18": 1, "2025-11-19": 1, "2025-11-20": 3}};
+                    const stochasticData = {"stoch_10_4": ["2025-11-20"], "stoch_10_1": ["2025-10-10", "2025-11-06", "2025-11-20"]};
+
+                    // Prepare data in format expected by CompareChart
+                    const data = { data: chartData };
+
+                    new CompareChart('chart_VIX', data, scorecardData, stochasticData);
+                })();
+                </script>
+                
+                <script>
+                (function() {
                     const chartData = [{"date": "2025-10-01", "open": 597.17, "high": 603.79, "low": 596.34, "close": 603.25, "volume": 46899612}, {"date": "2025-10-02", "open": 607.06, "high": 607.16, "low": 602.93, "close": 605.73, "volume": 43765410}, {"date": "2025-10-03", "open": 606.51, "high": 607.33, "low": 601.38, "close": 603.18, "volume": 46482098}, {"date": "2025-10-06", "open": 608.45, "high": 609.36, "low": 605.97, "close": 607.71, "volume": 41962115}, {"date": "2025-10-07", "open": 609.02, "high": 609.71, "low": 603.03, "close": 604.51, "volume": 58209463}, {"date": "2025-10-08", "open": 605.41, "high": 611.75, "low": 605.26, "close": 611.44, "volume": 50629754}, {"date": "2025-10-09", "open": 611.48, "high": 611.61, "low": 607.48, "close": 610.7, "volume": 45550958}, {"date": "2025-10-10", "open": 611.4, "high": 613.18, "low": 589.05, "close": 589.5, "volume": 97614783}, {"date": "2025-10-14", "open": 595.31, "high": 602.69, "low": 590.13, "close": 598.0, "volume": 69203187}, {"date": "2025-10-15", "open": 604.01, "high": 606.7, "low": 595.93, "close": 602.22, "volume": 62805456}, {"date": "2025-10-16", "open": 605.11, "high": 608.31, "low": 595.5, "close": 599.99, "volume": 70981963}, {"date": "2025-10-17", "open": 597.95, "high": 605.51, "low": 596.37, "close": 603.93, "volume": 72024872}, {"date": "2025-10-20", "open": 607.14, "high": 612.8, "low": 607.07, "close": 611.54, "volume": 45761697}, {"date": "2025-10-21", "open": 611.64, "high": 612.72, "low": 609.32, "close": 611.38, "volume": 44538161}, {"date": "2025-10-22", "open": 610.82, "high": 611.41, "low": 599.74, "close": 605.49, "volume": 61478802}, {"date": "2025-10-23", "open": 604.91, "high": 611.37, "low": 604.52, "close": 610.58, "volume": 42844298}, {"date": "2025-10-24", "open": 615.99, "high": 618.42, "low": 615.13, "close": 617.1, "volume": 47632473}, {"date": "2025-10-27", "open": 624.52, "high": 628.55, "low": 624.03, "close": 628.09, "volume": 54098611}, {"date": "2025-10-28", "open": 630.36, "high": 634.68, "low": 629.25, "close": 632.92, "volume": 61195733}, {"date": "2025-10-29", "open": 635.59, "high": 637.01, "low": 630.25, "close": 635.77, "volume": 67422576}, {"date": "2025-10-30", "open": 632.17, "high": 633.5, "low": 625.94, "close": 626.05, "volume": 61628511}, {"date": "2025-10-31", "open": 634.17, "high": 634.2, "low": 626.69, "close": 629.07, "volume": 66305047}, {"date": "2025-11-03", "open": 635.11, "high": 635.82, "low": 629.85, "close": 632.08, "volume": 37154267}, {"date": "2025-11-04", "open": 623.28, "high": 626.95, "low": 618.46, "close": 619.25, "volume": 63830768}, {"date": "2025-11-05", "open": 618.49, "high": 626.6, "low": 617.21, "close": 623.28, "volume": 48688484}, {"date": "2025-11-06", "open": 621.79, "high": 622.04, "low": 610.3, "close": 611.67, "volume": 72115048}, {"date": "2025-11-07", "open": 608.31, "high": 609.95, "low": 598.67, "close": 609.74, "volume": 81835388}, {"date": "2025-11-10", "open": 618.92, "high": 624.31, "low": 616.89, "close": 623.23, "volume": 55919731}, {"date": "2025-11-12", "open": 624.84, "high": 624.86, "low": 617.81, "close": 621.08, "volume": 47444384}, {"date": "2025-11-13", "open": 617.54, "high": 618.12, "low": 606.08, "close": 608.4, "volume": 71333614}, {"date": "2025-11-14", "open": 599.55, "high": 613.35, "low": 597.17, "close": 608.86, "volume": 80087131}, {"date": "2025-11-17", "open": 606.3, "high": 612.48, "low": 599.87, "close": 603.66, "volume": 63850367}, {"date": "2025-11-18", "open": 599.62, "high": 602.31, "low": 591.34, "close": 596.31, "volume": 83299463}, {"date": "2025-11-19", "open": 597.07, "high": 606.16, "low": 594.59, "close": 599.87, "volume": 73111387}, {"date": "2025-11-20", "open": 611.62, "high": 614.03, "low": 596.25, "close": 596.77, "volume": 47931229}];
                     const scorecardData = {"v1": {"2025-10-01": 6, "2025-10-02": 6, "2025-10-03": 6, "2025-10-06": 6, "2025-10-07": 6, "2025-10-08": 6, "2025-10-09": 6, "2025-10-10": 5, "2025-10-14": 6, "2025-10-15": 6, "2025-10-16": 6, "2025-10-17": 4, "2025-10-20": 6, "2025-10-21": 5, "2025-10-22": 4, "2025-10-23": 5, "2025-10-24": 6, "2025-10-27": 6, "2025-10-28": 5, "2025-10-29": 5, "2025-10-30": 5, "2025-10-31": 5, "2025-11-03": 5, "2025-11-04": 3, "2025-11-05": 4, "2025-11-06": 4, "2025-11-07": 3, "2025-11-10": 4, "2025-11-12": 4, "2025-11-13": 4, "2025-11-14": 3, "2025-11-17": 3, "2025-11-18": 3, "2025-11-19": 3, "2025-11-20": 4}, "v2": {"2025-10-01": 7, "2025-10-02": 7, "2025-10-03": 7, "2025-10-06": 7, "2025-10-07": 7, "2025-10-08": 7, "2025-10-09": 7, "2025-10-10": 4, "2025-10-14": 4, "2025-10-15": 4, "2025-10-16": 4, "2025-10-17": 5, "2025-10-20": 7, "2025-10-21": 7, "2025-10-22": 6, "2025-10-23": 6, "2025-10-24": 7, "2025-10-27": 7, "2025-10-28": 7, "2025-10-29": 7, "2025-10-30": 6, "2025-10-31": 6, "2025-11-03": 6, "2025-11-04": 4, "2025-11-05": 4, "2025-11-06": 3, "2025-11-07": 2, "2025-11-10": 4, "2025-11-12": 6, "2025-11-13": 3, "2025-11-14": 2, "2025-11-17": 1, "2025-11-18": 1, "2025-11-19": 1, "2025-11-20": 3}};
                     const stochasticData = {"stoch_10_4": ["2025-11-20"], "stoch_10_1": ["2025-10-10", "2025-11-06", "2025-11-20"]};
@@ -686,6 +784,19 @@
                     const data = { data: chartData };
 
                     new CompareChart('chart_QQQ', data, scorecardData, stochasticData);
+                })();
+                </script>
+                
+                <script>
+                (function() {
+                    const chartData = [{"date": "2025-10-01", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-02", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-08", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-09", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-15", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-16", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-20", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-21", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-22", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-23", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-24", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-27", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-28", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-29", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-30", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-10-31", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-03", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-04", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-05", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-06", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-07", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-10", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-12", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-13", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-14", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-17", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-18", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-19", "open": null, "high": null, "low": null, "close": null, "volume": null}, {"date": "2025-11-20", "open": null, "high": null, "low": null, "close": null, "volume": null}];
+                    const scorecardData = {"v1": {"2025-10-01": 6, "2025-10-02": 6, "2025-10-03": 6, "2025-10-06": 6, "2025-10-07": 6, "2025-10-08": 6, "2025-10-09": 6, "2025-10-10": 5, "2025-10-14": 6, "2025-10-15": 6, "2025-10-16": 6, "2025-10-17": 4, "2025-10-20": 6, "2025-10-21": 5, "2025-10-22": 4, "2025-10-23": 5, "2025-10-24": 6, "2025-10-27": 6, "2025-10-28": 5, "2025-10-29": 5, "2025-10-30": 5, "2025-10-31": 5, "2025-11-03": 5, "2025-11-04": 3, "2025-11-05": 4, "2025-11-06": 4, "2025-11-07": 3, "2025-11-10": 4, "2025-11-12": 4, "2025-11-13": 4, "2025-11-14": 3, "2025-11-17": 3, "2025-11-18": 3, "2025-11-19": 3, "2025-11-20": 4}, "v2": {"2025-10-01": 7, "2025-10-02": 7, "2025-10-03": 7, "2025-10-06": 7, "2025-10-07": 7, "2025-10-08": 7, "2025-10-09": 7, "2025-10-10": 4, "2025-10-14": 4, "2025-10-15": 4, "2025-10-16": 4, "2025-10-17": 5, "2025-10-20": 7, "2025-10-21": 7, "2025-10-22": 6, "2025-10-23": 6, "2025-10-24": 7, "2025-10-27": 7, "2025-10-28": 7, "2025-10-29": 7, "2025-10-30": 6, "2025-10-31": 6, "2025-11-03": 6, "2025-11-04": 4, "2025-11-05": 4, "2025-11-06": 3, "2025-11-07": 2, "2025-11-10": 4, "2025-11-12": 6, "2025-11-13": 3, "2025-11-14": 2, "2025-11-17": 1, "2025-11-18": 1, "2025-11-19": 1, "2025-11-20": 3}};
+                    const stochasticData = {"stoch_10_4": ["2025-11-20"], "stoch_10_1": ["2025-10-10", "2025-11-06", "2025-11-20"]};
+
+                    // Prepare data in format expected by CompareChart
+                    const data = { data: chartData };
+
+                    new CompareChart('chart_IXIC', data, scorecardData, stochasticData);
                 })();
                 </script>
                 
