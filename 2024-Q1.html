@@ -142,7 +142,7 @@
         </div>
 
         <div class="footer">
-            Generated on 2025-11-20 14:13 UTC
+            Generated on 2025-11-20 15:11 UTC
         </div>
     </div>
 
@@ -507,7 +507,7 @@
             drawScorecardOverlays(group) {
                 if (!this.scorecardData || !this.scorecardData.v1 || !this.scorecardData.v2) return;
 
-                const drawScorecard = (scores, maxScore, color, yOffset) => {
+                const drawScorecard = (scores, color, yOffset) => {
                     const pathData = [];
                     const prices = this.data.data;
 
@@ -520,8 +520,8 @@
                         const score = scores[p.date];
                         if (score !== undefined) {
                             const x = this.xScale(i);
-                            // Scale score to chart height (0 to maxScore mapped to bottom to top of price area)
-                            const scoreRatio = score / maxScore;
+                            // Scale ALL scores to 0-9 range (common Y-axis scale)
+                            const scoreRatio = score / 9;
                             const y = this.chartHeight * 0.7 * (1 - scoreRatio) + yOffset;
                             pathData.push(`${pathData.length === 0 ? 'M' : 'L'} ${x},${y}`);
                         }
@@ -538,11 +538,11 @@
                     }
                 };
 
-                // Draw V1 scorecard (0-6 scale)
-                drawScorecard(this.scorecardData.v1, 6, COLORS.v1_scorecard, 0);
+                // Draw V1 scorecard (0-6 scale, plotted on 0-9 Y-axis)
+                drawScorecard(this.scorecardData.v1, COLORS.v1_scorecard, 0);
 
-                // Draw V2 scorecard (0-9 scale)
-                drawScorecard(this.scorecardData.v2, 9, COLORS.v2_scorecard, 5);
+                // Draw V2 scorecard (0-9 scale, plotted on 0-9 Y-axis)
+                drawScorecard(this.scorecardData.v2, COLORS.v2_scorecard, 0);
             }
 
             drawLegend(group) {
