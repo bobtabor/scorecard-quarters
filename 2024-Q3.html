@@ -142,7 +142,7 @@
         </div>
 
         <div class="footer">
-            Generated on 2025-11-20 11:58 UTC
+            Generated on 2025-11-20 13:04 UTC
         </div>
     </div>
 
@@ -476,6 +476,11 @@
                     const prices = this.data.data;
 
                     prices.forEach((p, i) => {
+                        // Only draw scorecard for dates with actual price data
+                        if (p.open === null || p.high === null || p.low === null || p.close === null) {
+                            return;
+                        }
+
                         const score = scores[p.date];
                         if (score !== undefined) {
                             const x = this.xScale(i);
@@ -617,14 +622,18 @@
                     this.stochasticData.stoch_10_4.forEach(dateStr => {
                         const idx = dateToIndex[dateStr];
                         if (idx !== undefined) {
-                            const x = this.xScale(idx);
-                            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                            circle.setAttribute('cx', x);
-                            circle.setAttribute('cy', dotBaseY);
-                            circle.setAttribute('r', '4');
-                            circle.setAttribute('fill', '#FF1493');
-                            circle.setAttribute('opacity', '0.8');
-                            chartGroup.appendChild(circle);
+                            // Only draw if we have actual price data for this date
+                            const priceData = prices[idx];
+                            if (priceData && priceData.open !== null && priceData.close !== null) {
+                                const x = this.xScale(idx);
+                                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                                circle.setAttribute('cx', x);
+                                circle.setAttribute('cy', dotBaseY);
+                                circle.setAttribute('r', '4');
+                                circle.setAttribute('fill', '#FF1493');
+                                circle.setAttribute('opacity', '0.8');
+                                chartGroup.appendChild(circle);
+                            }
                         }
                     });
 
@@ -632,14 +641,18 @@
                     this.stochasticData.stoch_10_1.forEach(dateStr => {
                         const idx = dateToIndex[dateStr];
                         if (idx !== undefined) {
-                            const x = this.xScale(idx);
-                            const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-                            circle.setAttribute('cx', x);
-                            circle.setAttribute('cy', dotBaseY + 10);
-                            circle.setAttribute('r', '4');
-                            circle.setAttribute('fill', '#FFB6C1');
-                            circle.setAttribute('opacity', '0.8');
-                            chartGroup.appendChild(circle);
+                            // Only draw if we have actual price data for this date
+                            const priceData = prices[idx];
+                            if (priceData && priceData.open !== null && priceData.close !== null) {
+                                const x = this.xScale(idx);
+                                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                                circle.setAttribute('cx', x);
+                                circle.setAttribute('cy', dotBaseY + 10);
+                                circle.setAttribute('r', '4');
+                                circle.setAttribute('fill', '#FFB6C1');
+                                circle.setAttribute('opacity', '0.8');
+                                chartGroup.appendChild(circle);
+                            }
                         }
                     });
                 }
